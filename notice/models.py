@@ -1,7 +1,8 @@
 import uuid
 from django.db import models
-from location.models import HealthFacility 
+from location.models import HealthFacility
 from core import fields, TimeUtils, models as core_models
+
 
 class Notice(core_models.VersionedModel):
     PRIORITY_CHOICES = (
@@ -21,14 +22,14 @@ class Notice(core_models.VersionedModel):
         HealthFacility,
         on_delete=models.CASCADE,
         related_name='notices',
-        null=True,  
+        null=True,
         blank=True,
         db_column="HFID"
-    )    
+    )
     created_at = fields.DateTimeField(default=TimeUtils.now, db_column="CreatedAt")
     updated_at = models.DateTimeField(auto_now=True, db_column="UpdatedAt")
-    schedule_publish = models.BooleanField(default=False, db_column="SchedulePublish")  
-    publish_start_date = models.DateTimeField(null=True, blank=True, db_column="PublishStartDate")  
+    schedule_publish = models.BooleanField(default=False, db_column="SchedulePublish")
+    publish_start_date = models.DateTimeField(null=True, blank=True, db_column="PublishStartDate")
     is_active = models.BooleanField(default=True, db_column="IsActive")
     audit_user_id = models.IntegerField(db_column="AuditUserID")
 

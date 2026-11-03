@@ -3,7 +3,7 @@
 Home Messages provides Django models and GraphQL operations for messages and their file or URL attachments in openIMIS.
 
 - Repository: [openimis/openimis-be-home-messages_py](https://github.com/openimis/openimis-be-home-messages_py)
-- Python distribution: `openimis-be-home-messages`
+- Python distribution: `openimis-be-notice`
 - Python package and Django app label: `notice`
 - Django configuration: `notice.apps.NoticeConfig`, displayed as **Home Messages**
 - Frontend: [openimis/openimis-fe-home-messages_js](https://github.com/openimis/openimis-fe-home-messages_js), packaged as `@openimis/fe-home-messages`
@@ -15,7 +15,7 @@ Register the module in the backend assembly's `openimis.json`:
 ```json
 {
   "name": "notice",
-  "pip": "git+https://github.com/openimis/openimis-be-home-messages_py.git@develop#egg=openimis-be-home-messages"
+  "pip": "git+https://github.com/openimis/openimis-be-home-messages_py.git@develop#egg=openimis-be-notice"
 }
 ```
 
@@ -150,7 +150,7 @@ These are application configuration defaults, not a replacement for model defini
 
 ## Rename compatibility
 
-The repositories are now `openimis-be-home-messages_py` and `openimis-fe-home-messages_js`. The Python distribution is renamed, but imports, the Django app label, configuration namespace, GraphQL names, database tables, and migration history retain `notice`.
+The repositories are now `openimis-be-home-messages_py` and `openimis-fe-home-messages_js`. The Python distribution is `openimis-be-notice`: the assembly installs each module as `openimis-be-<name>` and imports it as `<name>`, so the distribution follows the `notice` app name. Imports, the Django app label, configuration namespace, GraphQL names, database tables, and migration history are `notice` too.
 
 Do not rename the `notice/` directory or rewrite historical migrations as part of this package rename. Existing installations retain their data. Local checkout folders may keep their previous names.
 

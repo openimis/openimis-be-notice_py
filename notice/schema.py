@@ -17,8 +17,6 @@ from .apps import NoticeConfig
 from core.schema import signal_mutation_module_validate
 
 
-
-
 class Query(graphene.ObjectType):
     notices = OrderedDjangoFilterConnectionField(
         NoticeGQLType,
@@ -28,11 +26,9 @@ class Query(graphene.ObjectType):
         orderBy=graphene.List(of_type=graphene.String),
     )
     notice_attachments = OrderedDjangoFilterConnectionField(
-            NoticeAttachmentGQLType,
-            orderBy=graphene.List(of_type=graphene.String),
-        ) 
-
-
+        NoticeAttachmentGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+    )
 
     def resolve_notices(self, info, **kwargs):
         if not info.context.user.has_perms(NoticeConfig.gql_query_notices_perms):
@@ -50,7 +46,7 @@ class Query(graphene.ObjectType):
         if "notice_Uuid" in kwargs:
             queryset = queryset.filter(notice__uuid=kwargs["notice_Uuid"])
         return queryset
-    
+
 
 class Mutation(graphene.ObjectType):
     create_notice = CreateNoticeMutation.Field()
@@ -76,8 +72,9 @@ def on_notice_mutation(**kwargs):
             notice=notice,
             mutation_id=kwargs["mutation_log_id"]
         )
-    
+
     return []  # Return empty list (consistent with signal expectations)
+
 
 def bind_signals():
     signal_mutation_module_validate["notice"].connect(on_notice_mutation)
