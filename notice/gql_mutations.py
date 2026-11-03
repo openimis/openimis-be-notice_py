@@ -9,6 +9,7 @@ from django.core.exceptions import ValidationError, PermissionDenied
 from location.models import HealthFacility
 from graphene import String, Int, Boolean, Date, List, InputObjectType
 from datetime import datetime
+from graphql_relay import from_global_id
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 try:
     from celery import shared_task
     from django.conf import settings
-    
+
     # Check if Celery is properly configured
     CELERY_AVAILABLE = hasattr(settings, 'CELERY_BROKER_URL') or hasattr(settings, 'BROKER_URL')
     if CELERY_AVAILABLE:
@@ -24,11 +25,11 @@ try:
     else:
         logger.info("Celery is installed but not configured - using synchronous execution")
         CELERY_AVAILABLE = False
-        
+
 except ImportError:
     logger.info("Celery is not available - using synchronous execution")
     CELERY_AVAILABLE = False
-    
+
     # Create a dummy decorator for when Celery is not available
     def shared_task(func):
         return func
@@ -38,41 +39,41 @@ def _send_notice_notification_sync(notice_id, notification_types=None):
     """
     Synchronous function to send notice notifications
     Used when Celery is not available or for immediate execution
-    
+
     Args:
         notice_id: ID of the notice to send
         notification_types: List of notification types ('email', 'sms') or None for all configured
-        
+
     Returns:
         dict: Results of the notification sending
     """
     try:
         notice = Notice.objects.get(id=notice_id)
         notification_service = NotificationService()
-        
+
         # Determine recipients and notification channels
         channels = {}
-        
+
         # Get email recipients
         email_recipients = []
         if notice.health_facility and hasattr(notice.health_facility, 'email') and notice.health_facility.email:
             email_recipients.append(notice.health_facility.email)
-        
+
         # Get SMS recipients
         sms_recipients = []
         if notice.health_facility and hasattr(notice.health_facility, 'phone') and notice.health_facility.phone:
             sms_recipients.append(notice.health_facility.phone)
-        
+
         # Build channels dict based on what's requested and available
         if not notification_types:
             notification_types = ['email']  # Default to email only
-            
+
         if 'email' in notification_types and email_recipients:
             channels['email'] = email_recipients
-            
+
         if 'sms' in notification_types and sms_recipients:
             channels['sms'] = sms_recipients
-        
+
         # Send notifications
         if channels:
             results = notification_service.send_multi_channel(
@@ -81,19 +82,19 @@ def _send_notice_notification_sync(notice_id, notification_types=None):
                 description=notice.description,
                 priority=notice.priority
             )
-            
+
             # Log results
             for channel, result in results.items():
                 if result['success']:
                     logger.info(f"Notice {notice_id} sent successfully via {channel}")
                 else:
                     logger.error(f"Failed to send notice {notice_id} via {channel}: {result['error']}")
-                    
+
             return results
         else:
             logger.warning(f"No valid recipients found for notice {notice_id}")
             return {}
-            
+
     except Exception as exc:
         logger.error(f"Failed to send notice notification {notice_id}: {str(exc)}")
         return {'error': str(exc)}
@@ -103,7 +104,7 @@ def _send_notice_notification_sync(notice_id, notification_types=None):
 def send_notice_notification(notice_id, notification_types=None):
     """
     Celery task to send notice notifications (or direct execution if Celery unavailable)
-    
+
     Args:
         notice_id: ID of the notice to send
         notification_types: List of notification types ('email', 'sms') or None for all configured
@@ -114,12 +115,12 @@ def send_notice_notification(notice_id, notification_types=None):
 def execute_notification_task(notice_id, notification_types=None, use_async=True):
     """
     Execute notification task - async with Celery if available, otherwise synchronous
-    
+
     Args:
         notice_id: ID of the notice to send
         notification_types: List of notification types
         use_async: Whether to use async execution (ignored if Celery unavailable)
-        
+
     Returns:
         tuple: (success: bool, result: dict or None)
     """
@@ -136,7 +137,7 @@ def execute_notification_task(notice_id, notification_types=None, use_async=True
                 return False, result
             else:
                 return True, {'result': result, 'async': False}
-                
+
     except Exception as exc:
         logger.error(f"Failed to execute notification task: {str(exc)}")
         return False, {'error': str(exc)}
@@ -179,11 +180,11 @@ class CreateNoticeMutation(OpenIMISMutation):
                 raise ValidationError("Authentication required")
             if not user.has_perms(NoticeConfig.gql_mutation_create_notices_perms):
                 raise PermissionDenied("Unauthorized")
-                
+
             health_facility = None
             if data.get('health_facility_id'):
                 health_facility = HealthFacility.objects.get(id=data.get("health_facility_id"))
-            
+
             import uuid
             created_at = data.get("created_at") or data.get("createdAt") or datetime.now()
             notice = Notice(
@@ -199,13 +200,13 @@ class CreateNoticeMutation(OpenIMISMutation):
                 audit_user_id=user.id_for_audit,
             )
             notice.save()
-            
+
             # Handle attachments
             attachments_data = data.get("attachments", [])
             for attachment_data in attachments_data:
                 if not user.has_perms(["notice.add_notice_attachment"]):
                     raise PermissionDenied("Unauthorized to add attachments")
-                    
+
                 attachment = NoticeAttachment(
                     notice=notice,
                     general_type=attachment_data.get("general_type", "document"),
@@ -219,25 +220,25 @@ class CreateNoticeMutation(OpenIMISMutation):
                     audit_user_id=user.id_for_audit,
                 )
                 attachment.save()
-            
+
             # Send notification if requested
             if data.get("auto_send_notification", True):  # Default to True for backward compatibility
                 notification_types = data.get("notification_types", ["email"])
                 use_async = data.get("use_async", True)  # Default to async if available
-                
+
                 success, result = execute_notification_task(
-                    notice.id, 
-                    notification_types, 
+                    notice.id,
+                    notification_types,
                     use_async
                 )
-                
+
                 if not success:
                     logger.warning(f"Notification sending failed: {result}")
                     # Don't return error here as notice was created successfully
                     # Just log the notification failure
-                
+
             return None  # Success, no errors
-            
+
         except Exception as exc:
             logger.error(f"Failed to create notice: {str(exc)}")
             return [{
@@ -245,8 +246,6 @@ class CreateNoticeMutation(OpenIMISMutation):
                 "detail": str(exc)
             }]
 
-
-from graphql_relay import from_global_id
 
 def _get_notice_by_uuid_or_id(uuid_or_id):
     if not uuid_or_id:
@@ -270,6 +269,7 @@ def _get_notice_by_uuid_or_id(uuid_or_id):
         pass
     return None
 
+
 class UpdateNoticeMutation(OpenIMISMutation):
     _mutation_module = "notice"
     _mutation_class = "UpdateNoticeMutation"
@@ -286,9 +286,9 @@ class UpdateNoticeMutation(OpenIMISMutation):
         schedule_publish = Boolean(required=False)
         publish_start_date = Date(required=False)
         created_at = Date(required=False, source='createdAt')
-        auto_send_notification = Boolean(required=False)  
-        notification_types = List(String, required=False) 
-        use_async = Boolean(required=False)  
+        auto_send_notification = Boolean(required=False)
+        notification_types = List(String, required=False)
+        use_async = Boolean(required=False)
 
     @classmethod
     def async_mutate(cls, user, **data):
@@ -308,7 +308,7 @@ class UpdateNoticeMutation(OpenIMISMutation):
             if "client_mutation_id" in data:
                 data.pop('client_mutation_id')
             if "client_mutation_label" in data:
-                data.pop('client_mutation_label')            
+                data.pop('client_mutation_label')
             if "title" in data:
                 notice.title = data["title"]
             if "description" in data:
@@ -329,10 +329,10 @@ class UpdateNoticeMutation(OpenIMISMutation):
                 notice.created_at = data["created_at"]
             elif "createdAt" in data and data["createdAt"]:
                 notice.created_at = data["createdAt"]
-                
+
             notice.save()
             return None  # Success, no errors
-            
+
         except Notice.DoesNotExist as dne:
             return [{"message": "Notice not found", "detail": str(dne)}]
         except Exception as exc:
@@ -363,9 +363,9 @@ class DeleteNoticeMutation(OpenIMISMutation):
                     notice.delete_history()
                 else:
                     errors.append({"message": "Notice not found", "detail": str(uuid_or_id)})
-            
+
             return errors if errors else None
-            
+
         except Exception as exc:
             logger.error(f"Failed to delete notices: {str(exc)}")
             return [{"message": "Failed to delete notices", "detail": str(exc)}]
@@ -425,9 +425,9 @@ class CreateNoticeAttachmentMutation(OpenIMISMutation):
                 raise ValidationError("Authentication required")
             if not user.has_perms(["notice.add_notice_attachment"]):
                 raise PermissionDenied("Unauthorized")
-                
+
             notice = Notice.objects.get(uuid=data["notice_uuid"])
-            
+
             client_mutation_id = data.get("client_mutation_id")
             if client_mutation_id:
                 data.pop('client_mutation_id')
@@ -446,10 +446,10 @@ class CreateNoticeAttachmentMutation(OpenIMISMutation):
                 document=data.get("document"),
                 audit_user_id=user.id_for_audit,
             )
-            
+
             attachment.save()
             return None  # Success, no errors
-            
+
         except Exception as exc:
             logger.error(f"Failed to create notice attachment: {str(exc)}")
             return [{
@@ -484,13 +484,13 @@ class UpdateNoticeAttachmentMutation(OpenIMISMutation):
             attachment = NoticeAttachment.objects.get(uuid=data["uuid"])
             attachment.save_history()
             attachment.audit_user_id = user.id_for_audit
-            
+
             client_mutation_id = data.get("client_mutation_id")
             if client_mutation_id:
                 data.pop('client_mutation_id')
             if "client_mutation_label" in data:
                 data.pop('client_mutation_label')
-                
+
             attachment.general_type = data["general_type"]
             attachment.type = data.get("type")
             attachment.title = data.get("title")
@@ -499,10 +499,10 @@ class UpdateNoticeAttachmentMutation(OpenIMISMutation):
             attachment.mime = data.get("mime")
             attachment.url = data.get("url")
             attachment.document = data.get("document")
-            
+
             attachment.save()
             return None  # Success, no errors
-            
+
         except Exception as exc:
             logger.error(f"Failed to update notice attachment: {str(exc)}")
             return [{
@@ -525,19 +525,19 @@ class DeleteNoticeAttachmentMutation(OpenIMISMutation):
                 raise ValidationError("Authentication required")
             if not user.has_perms(["notice.delete_notice_attachment"]):
                 raise PermissionDenied("Unauthorized")
-                
+
             # Clean up client mutation fields
             client_mutation_id = data.get("client_mutation_id")
             if client_mutation_id:
                 data.pop('client_mutation_id')
             if "client_mutation_label" in data:
                 data.pop('client_mutation_label')
-            
+
             attachment = NoticeAttachment.objects.get(id=data["id"])
             attachment.audit_user_id = user.id_for_audit
             attachment.delete_history()
             return None  # Success, no errors
-            
+
         except Exception as exc:
             logger.error(f"Failed to delete notice attachment: {str(exc)}")
             return [{

@@ -32,8 +32,8 @@ class NoticeGQLType(DjangoObjectType):
             "audit_user_id": ["exact"],
             **prefix_filterset("health_facility__", HealthFacilityGQLType._meta.filter_fields),
         }
-        connection_class = ExtendedConnection 
-    
+        connection_class = ExtendedConnection
+
     def resolve_attachment_count(self, info):
         return self.notice_attachments.filter(*filter_validity()).count()
 
@@ -79,8 +79,10 @@ class NoticeGQLType(DjangoObjectType):
 
         return queryset.order_by('-created_at')
 
+
 class NoticeAttachmentGQLType(DjangoObjectType):
     doc = graphene.String(source='document')
+
     class Meta:
         model = NoticeAttachment
         interfaces = (graphene.relay.Node,)
@@ -97,4 +99,3 @@ class NoticeAttachmentGQLType(DjangoObjectType):
             **prefix_filterset("notice__", NoticeGQLType._meta.filter_fields),
         }
         connection_class = ExtendedConnection
-
